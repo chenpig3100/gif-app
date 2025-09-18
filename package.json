@@ -1,0 +1,34 @@
+{
+  "name": "gif-app",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon src/app.js",
+    "load": "node scripts/load.js",
+    "docker:build": "docker buildx build --platform linux/amd64 -t gif-app:local .",
+    "docker:run": "docker run --rm -it -p 3000:3000 -e JWT_SECRET=change_me -v \"$PWD/uploads:/app/uploads\" -v \"$PWD/outputs:/app/outputs\" -v \"$PWD/data:/app/data\" --name gif-app gif-app:local",
+    "docker:stop": "docker stop gif-app || true",
+    "docker:logs": "docker logs -f gif-app",
+    "docker:clean": "docker rm -f gif-app 2>/dev/null || true && docker rmi gif-app:local 2>/dev/null || true"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.891.0",
+    "@aws-sdk/client-s3": "^3.891.0",
+    "@aws-sdk/s3-request-presigner": "^3.891.0",
+    "axios": "^1.11.0",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "express-fileupload": "^1.5.2",
+    "jose": "^6.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
