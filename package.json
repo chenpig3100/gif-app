@@ -2,8 +2,13 @@
   "name": "gif-app",
   "version": "1.0.0",
   "main": "index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "load": "node scripts/load.js",
     "docker:build": "docker buildx build --platform linux/amd64 -t gif-app:local .",
@@ -17,8 +22,9 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.891.0",
+    "@aws-sdk/client-dynamodb": "^3.896.0",
     "@aws-sdk/client-s3": "^3.891.0",
+    "@aws-sdk/lib-dynamodb": "^3.896.0",
     "@aws-sdk/s3-request-presigner": "^3.891.0",
     "axios": "^1.11.0",
     "dotenv": "^17.2.1",

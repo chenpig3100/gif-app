@@ -1,5 +1,5 @@
 import { PutCommand, GetCommand, QueryCommand, UpdateCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
-import { doc } from "./dynamo";
+import { doc } from "./dynamo.js";
 
 const TABLE = process.env.TABLE_NAME;
 const ID_INDEX = "id-index";
