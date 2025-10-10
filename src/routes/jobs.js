@@ -1,51 +1,61 @@
 import express from "express";
+import { cognitoAuth as authMiddleware } from "../middleware/cognitoAuth.js";
 import fs from "fs";
 import path from "path";
-import { authMiddleware } from "../middleware/auth.js";
 import { transcodeToGif } from "../services/ffmpeg.js";
+import { getById, updateOutputPathById } from "../services/filesRepo.js";
+import { downloadToTmp, putObject, s3Key } from "../services/s3.js";
+import { getParam } from "../services/params.js";
 
 const router = express.Router();
-const DATA_DIR = "data";
-const DB_PATH = path.join(DATA_DIR, "db.json");
-
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, JSON.stringify({ files: [] }, null, 2));
-
 
 router.post("/transcode", authMiddleware, async (req, res) => {
-    let { fileId, filePath } = req.body;
-    const db = loadDB();
-
-    if (fileId) {
-        const rec = db.files.find(f => f.id === fileId);
-        if (!rec) return res.status(404).json({ error: "File not found" });
-        const isOwner = rec.ownerSub === req.user.sub;
-        const isAdmin = req.user.role === "admin";
-        if (!isOwner && !isAdmin) return res.status(403).json({ error: "Forbidden" });
-        filePath = rec.inputPath;
+    const { fileId, filePath: bodyFilePath } = req.body;
+    if (!fileId && !bodyFilePath) {
+        return res.status(400).json({ error: "fileId or filePath is required" });
     }
-
-    if (!filePath) return res.status(400).json({ error: "File path is required" });
 
     try {
-        const outputPath = await transcodeToGif(filePath);
+        let rec = null;
+        let filePath = bodyFilePath || null;
 
-        const idx = db.files.findIndex(f => f.inputPath === filePath);
-        if (idx >= 0) {
-            db.files[idx].outputPath = outputPath;
-            saveDB(db);
+        if (fileId) {
+        rec = await getById(fileId);
+        if (!rec) return res.status(404).json({ error: "File not found" });
+
+            const isOwner = rec["qut-username"] === req.user.sub;
+            const isAdmin = req.user.role === "admin";
+            if (!isOwner && !isAdmin) {
+                return res.status(403).json({ error: "Forbidden" });
+            }
+
+            filePath = rec.inputPath;
         }
-        res.json({ status: "done", outputPath, fileId: idx >= 0 ? db.files[idx].id : undefined });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+        if (!filePath) {
+            return res.status(400).json({ error: "File path is required" });
+        }        const localSrc = await downloadToTmp({ Key: filePath });
+        const localGif = await transcodeToGif(localSrc);
+
+        const gifKey = s3Key("outputs", `${path.basename(localSrc, path.extname(localSrc))}.gif`);
+        const body = fs.createReadStream(localGif);
+        await putObject({ Key: gifKey, Body: body, ContentType: "image/gif" });
+
+        try { fs.unlinkSync(localSrc); } catch {}
+        try { fs.unlinkSync(localGif); } catch {}
+
+        if (fileId) {
+            await updateOutputPathById(fileId, gifKey);
+        }
+
+        return res.json({
+            status: "done",
+            outputPath: gifKey,
+            fileId: fileId || null,
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message || "Transcode failed" });
     }
 });
-
-function loadDB() {
-    return JSON.parse(fs.readFileSync(DB_PATH, "utf-8"));
-}
-function saveDB(db) {
-    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
-}
 
 export default router;

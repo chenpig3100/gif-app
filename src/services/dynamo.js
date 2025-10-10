@@ -1,17 +1,22 @@
-// src/services/dynamo.js
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import "dotenv/config";
+import DynamoDB from "@aws-sdk/client-dynamodb";
+import DynamoDBLib from "@aws-sdk/lib-dynamodb";
+import { getParam } from "../services/params.js";
 
-const REGION = process.env.AWS_REGION || "ap-southeast-2";
-// export const TABLE_NAME = process.env.TABLE_NAME;
-// if (!TABLE_NAME) throw new Error("Missing env var TABLE_NAME");
+const REGION = getParam("AWS_REGION") || "ap-southeast-2";
+export const TABLE_NAME = getParam("TABLE_NAME") || "n11740388-files";
+if (!TABLE_NAME) throw new Error("Missing env var TABLE_NAME");
 
-const client = new DynamoDBClient({ region: REGION });
+const client = new DynamoDB.DynamoDBClient({ region: REGION, credentials: undefined, });
 
-// ✅ 正確初始化 DocumentClient
-export const doc = DynamoDBDocumentClient.from(client, {
-  marshallOptions: { removeUndefinedValues: true },
+export const doc = DynamoDBLib.DynamoDBDocumentClient.from(client, {
+    marshallOptions: { removeUndefinedValues: true },
 });
 
-// 匯出常用的命令
-export { PutCommand, GetCommand, QueryCommand, UpdateCommand, DeleteCommand };
+export const {
+    PutCommand,
+    GetCommand,
+    QueryCommand,
+    UpdateCommand,
+    DeleteCommand,
+} = DynamoDBLib;
