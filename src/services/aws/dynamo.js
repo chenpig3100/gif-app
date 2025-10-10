@@ -1,7 +1,7 @@
 import "dotenv/config";
 import DynamoDB from "@aws-sdk/client-dynamodb";
 import DynamoDBLib from "@aws-sdk/lib-dynamodb";
-import { getParam } from "../services/params.js";
+import { getParam } from "./params.js";
 
 const REGION = getParam("AWS_REGION") || "ap-southeast-2";
 export const TABLE_NAME = getParam("TABLE_NAME") || "n11740388-files";

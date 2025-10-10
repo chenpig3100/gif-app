@@ -1,11 +1,11 @@
 import express from "express";
-import { cognitoAuth as authMiddleware } from "../middleware/cognitoAuth.js";
+import { cognitoAuth as authMiddleware } from "../../middleware/cognitoAuth.js";
 import fs from "fs";
 import path from "path";
-import { transcodeToGif } from "../services/ffmpeg.js";
-import { getById, updateOutputPathById } from "../services/filesRepo.js";
-import { downloadToTmp, putObject, s3Key } from "../services/s3.js";
-import { getParam } from "../services/params.js";
+import { transcodeToGif } from "../../services/ffmpeg.js";
+import { getById, updateOutputPathById } from "../../services/filesRepo.js";
+import { downloadToTmp, putObject, s3Key } from "../../services/aws/s3.js";
+import { getParam } from "../../services/aws/params.js";
 
 const router = express.Router();
 

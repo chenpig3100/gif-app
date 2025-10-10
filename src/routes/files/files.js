@@ -2,11 +2,11 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { cognitoAuth as authMiddleware } from "../middleware/cognitoAuth.js";
-import { parseBool, parseNumber, parseData, buildLinkHeader } from "../utils/query.js";
-import { createFileRec, getById, listMine, updateTags, deleteRecordById, updateOutputPathById } from "../services/filesRepo.js";
+import { parseBool, parseNumber, parseData, buildLinkHeader } from "../../utils/query.js";
+import { createFileRec, getById, listMine, updateTags, deleteRecordById, updateOutputPathById } from "../../services/filesRepo.js";
 import { error } from "console";
-import { putObject, s3Key, getSigned, deleteObject } from "../services/s3.js";
-import { getParam } from "../services/params.js"
+import { putObject, s3Key, getSigned, deleteObject } from "../../services/aws/s3.js";
+import { getParam } from "../../services/aws/params.js"
 
 const router = express.Router();
 

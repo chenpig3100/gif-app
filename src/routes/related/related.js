@@ -2,10 +2,10 @@ import express from "express";
 import axios from "axios";
 import fs from "fs";
 import path from "path";
-import { cognitoAuth as authMiddleware } from "../middleware/cognitoAuth.js";
-import { createFileRec } from "../services/filesRepo.js";
-import { uploadStream, s3Key } from "../services/s3.js";
-import { getParam } from "../services/params.js";
+import { cognitoAuth as authMiddleware } from "../../middleware/cognitoAuth.js";
+import { createFileRec } from "../../services/filesRepo.js";
+import { uploadStream, s3Key } from "../../services/aws/s3.js";
+import { getParam } from "../../services/aws/params.js";
 import { Readable } from "stream";
 
 const UPLOAD_DIR = path.resolve(process.cwd(), "uploads");

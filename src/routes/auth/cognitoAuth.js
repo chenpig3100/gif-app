@@ -5,7 +5,7 @@ import {
     ConfirmSignUpCommand,
     InitiateAuthCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
-import { getParam } from "../services/params.js";
+import { getParam } from "../../services/aws/params.js";
 
 const router = express.Router();
 
