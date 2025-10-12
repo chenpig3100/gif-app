@@ -10,14 +10,14 @@ import { getParam } from "../../services/aws/params.js"
 
 const router = express.Router();
 
-const uploadDir = "uploads";
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+// const uploadDir = "uploads";
+// if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
-const DATA_DIR = "data";
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+// const DATA_DIR = "data";
+// if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const DATA_PATH = path.join(DATA_DIR, "db.json");
-if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, JSON.stringify({ files: [] }, null, 2));
+// const DATA_PATH = path.join(DATA_DIR, "db.json");
+// if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, JSON.stringify({ files: [] }, null, 2));
 
 router.post("/upload", authMiddleware, async (req, res) => {
     if (!req.files || !req.files.video) {
@@ -195,16 +195,16 @@ router.delete("/:id/upload", authMiddleware, async (req, res) => {
 
 
 // Load and save DB
-function loadDB() {
-    return JSON.parse(fs.readFileSync(DATA_PATH, "utf-8"));
-}
+// function loadDB() {
+//     return JSON.parse(fs.readFileSync(DATA_PATH, "utf-8"));
+// }
 
-function saveDB(data) {
-    fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2));
-}
+// function saveDB(data) {
+//     fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2));
+// }
 
-function genId() {
-    return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+// function genId() {
+//     return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+// }
 
 export default router;

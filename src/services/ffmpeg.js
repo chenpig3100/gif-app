@@ -8,6 +8,7 @@ export async function transcodeToGif(inputPath) {
   const inPath = path.resolve(inputPath);
   if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
+  // 不是存入S3，是存在本地的outputs資料夾
   const outName = `${Date.now()}.gif`;
   const outPath = path.join(OUTPUT_DIR, outName);
 

@@ -33,7 +33,8 @@ router.post("/transcode", authMiddleware, async (req, res) => {
         }
         if (!filePath) {
             return res.status(400).json({ error: "File path is required" });
-        }        const localSrc = await downloadToTmp({ Key: filePath });
+        }        
+        const localSrc = await downloadToTmp({ Key: filePath });
         const localGif = await transcodeToGif(localSrc);
 
         const gifKey = s3Key("outputs", `${path.basename(localSrc, path.extname(localSrc))}.gif`);

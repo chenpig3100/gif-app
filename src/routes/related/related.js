@@ -8,6 +8,7 @@ import { uploadStream, s3Key } from "../../services/aws/s3.js";
 import { getParam } from "../../services/aws/params.js";
 import { Readable } from "stream";
 
+// 不是抓S3的檔案，是抓local的檔案
 const UPLOAD_DIR = path.resolve(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -92,39 +93,5 @@ router.post("/ingest", authMiddleware, async (req, res) => {
 
     try { fs.unlinkSync(absPath); } catch { }
 });
-
-// YouTube Trending Videos
-// router.get("/trending", async (req, res) => { 
-//     const { region = "AU", limit = 10 } = req.query;
-//     const API_KEY = process.env.YOUTUBE_API_KEY;
-
-//     try {
-//         const  { data } = await axios.get("https://www.googleapis.com/youtube/v3/videos", {
-//             params: {
-//                 part: "snippet,contentDetails,statistics",
-//                 chart: "mostPopular",
-//                 regionCode: region,
-//                 maxResults: limit,
-//                 key: API_KEY,
-//             }
-//         });
-
-//         const items = data.items.map(item => ({
-//             id: item.id,
-//             title: item.snippet.title,
-//             thumbnails: item.snippet.thumbnails?.medium?.url,
-//             channelTitle: item.snippet.channelTitle,
-//             viewCount: item.statistics?.viewCount,
-//             publishedAt: item.snippet.publishedAt,
-//         }));
-
-//         res.json({ items });
-//     } catch (error) {
-//         console.error("Error fetching trending videos:", error);
-//         res.status(500).json({ error: "Failed to fetch trending videos" });
-//     }
-// });
-
-// Load and save DB
 
 export default router;
