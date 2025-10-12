@@ -2,11 +2,11 @@ import express from "express";
 import axios from "axios";
 import fs from "fs";
 import path from "path";
-import { cognitoAuth as authMiddleware } from "../../middleware/cognitoAuth.js.js";
-import { createFileRec } from "../../services/filesRepo.js.js";
-import { uploadStream, s3Key } from "../../services/aws/s3.js";
+import { cognitoAuth as authMiddleware } from "../../middleware/cognitoAuth.js";
+import { createFileRec } from "../../services/filesRepo.js";
+import { uploadStream, s3Key, putObject } from "../../services/aws/s3.js";
 import { getParam } from "../../services/aws/params.js";
-import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 
 // 不是抓S3的檔案，是抓local的檔案
 const UPLOAD_DIR = path.resolve(process.cwd(), "uploads");
@@ -60,7 +60,6 @@ router.post("/ingest", authMiddleware, async (req, res) => {
 
     const filename = `${Date.now()}.mp4`;
     const absPath = path.join(UPLOAD_DIR, filename);
-    //const relPath = path.join("uploads", filename);
     const key = s3Key("uploads", filename);
 
     const response = await axios.get(url, {
@@ -74,24 +73,19 @@ router.post("/ingest", authMiddleware, async (req, res) => {
         },
         validateStatus: (s) => s >= 200 && s < 400,
     });
-    const src = typeof response.data.pipe === "function" ? response.data : Readable.fromWeb(response.data);
 
-    await new Promise((resolve, reject) => {
-        const ws = fs.createWriteStream(absPath);
-        src.pine(ws);
-        ws.on("finish", resolve);
-        ws.on("error", reject);
-    });
+    await pipeline(response.data, fs.createWriteStream(absPath));
 
     const size = fs.statSync(absPath).size;
     await putObject({
-        Key: s3Key("uploads", filename),
+        Key: key,
         Body: fs.createReadStream(absPath),
         ContentType: response.headers["content-type"] || "video/mp4",
         ContentLength: size,
     });
 
     try { fs.unlinkSync(absPath); } catch { }
+    return res.json({ ok: true, key, filename, size });
 });
 
 export default router;

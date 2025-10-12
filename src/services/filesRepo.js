@@ -1,4 +1,4 @@
-import { doc, PutCommand, GetCommand, QueryCommand, UpdateCommand, DeleteCommand, TABLE_NAME } from "./dynamo.js";
+import { doc, PutCommand, GetCommand, QueryCommand, UpdateCommand, DeleteCommand, TABLE_NAME } from "./aws/dynamo.js";
 
 const ID_INDEX = "id-index";
 
