@@ -17,9 +17,20 @@ export async function preloadParams(names = []) {
     }
 }
 
-export function getParam(name, fallbackEnv = true) {
-    if (cache.has(name)) return cache.get(name);
-    if (fallbackEnv) return process.env[name];
+export async function getParam(name, fallbackEnv = true) {
+  if (cache.has(name)) return cache.get(name);
+  if (fallbackEnv && process.env[name]) return process.env[name];
+
+  try {
+    const paramName = name.startsWith("/gif-app/") ? name : `/gif-app/${name}`;
+    const out = await client.send(
+      new GetParameterCommand({ Name: paramName, WithDecryption: false })
+    );
+    const value = out?.Parameter?.Value;
+    if (value) cache.set(name, value);
+    return value;
+  } catch (err) {
+    console.error(`❌ Failed to fetch parameter ${name}:`, err.message);
     return undefined;
 }
 
