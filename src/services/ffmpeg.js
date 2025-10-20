@@ -1,16 +1,60 @@
 import { spawn } from "child_process";
-import path from "path";
 import fs from "fs";
+import os from "os";
+import path from "path";
+import { PassThrough } from "stream";
 
-const OUTPUT_DIR = path.resolve("outputs");
+/**
+ * Stream-based transcoding: pipe input stream -> ffmpeg -> GIF stream
+ * No local files are created. Caller can upload the returned stream to S3.
+ *
+ * @param {Readable} inputStream - source video stream (e.g. S3 GetObject Body)
+ * @param {object} opts
+ * @param {number} [opts.duration=5]
+ * @param {number} [opts.fps=10]
+ * @param {number} [opts.width=320]
+ * @returns {{ stream: Readable, process: ChildProcess }}
+ */
+export function transcodeToGifStream(inputStream, { duration = 5, fps = 10, width = 320 } = {}) {
+  const args = [
+    "-hide_banner",
+    "-loglevel", "error",
+    "-nostdin",
+    "-y",
+    "-t", String(duration),
+    "-i", "pipe:0",
+    "-vf", `fps=${fps},scale=${width}:-1:flags=lanczos`,
+    "-an",
+    "-pix_fmt", "rgb24",
+    "-f", "gif",
+    "pipe:1",
+  ];
 
+  const proc = spawn("ffmpeg", args);
+
+  // forward input to ffmpeg stdin
+  inputStream.pipe(proc.stdin);
+  // avoid EPIPE if ffmpeg closes early
+  proc.stdin.on("error", () => {});
+
+  // expose ffmpeg stdout as a readable stream
+  const out = new PassThrough();
+  proc.stdout.pipe(out);
+
+  return { stream: out, process: proc };
+}
+
+/**
+ * DEPRECATED: file-path version kept for backward compatibility.
+ * Writes to OS temp directory instead of project ./outputs to avoid local state in repo.
+ * Prefer using transcodeToGifStream() and uploading directly to S3.
+ *
+ * @param {string} inputPath - local path to source video
+ * @returns {Promise<string>} - absolute path to temp GIF file
+ */
 export async function transcodeToGif(inputPath) {
   const inPath = path.resolve(inputPath);
-  if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-
-  // 不是存入S3，是存在本地的outputs資料夾
-  const outName = `${Date.now()}.gif`;
-  const outPath = path.join(OUTPUT_DIR, outName);
+  const outPath = path.join(os.tmpdir(), `${Date.now()}.gif`);
 
   const args = [
     "-hide_banner",
@@ -33,5 +77,5 @@ export async function transcodeToGif(inputPath) {
     proc.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited with code ${code}: ${stderr}`))));
   });
 
-  return path.relative(process.cwd(), outPath);
+  return outPath;
 }

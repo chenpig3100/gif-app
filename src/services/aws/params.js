@@ -1,4 +1,4 @@
-import { SSMClient, GetParametersCommand } from "@aws-sdk/client-ssm";
+import { SSMClient, GetParametersCommand, GetParameterCommand } from "@aws-sdk/client-ssm";
 
 const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "ap-southeast-2";
 const client = new SSMClient({ region });
@@ -32,6 +32,7 @@ export async function getParam(name, fallbackEnv = true) {
   } catch (err) {
     console.error(`❌ Failed to fetch parameter ${name}:`, err.message);
     return undefined;
+  }
 }
 
 export const ssmName = (short) => `/gif-app/${short}`;

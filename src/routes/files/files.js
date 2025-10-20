@@ -1,23 +1,10 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
 import { cognitoAuth as authMiddleware } from "../../middleware/cognitoAuth.js";
-import { parseBool, parseNumber, parseData, buildLinkHeader } from "../../utils/query.js";
-import { createFileRec, getById, listMine, updateTags, deleteRecordById, updateOutputPathById } from "../../services/filesRepo.js";
-import { error } from "console";
+import { createFileRec, getById, listMine, updateTags, deleteRecordById } from "../../services/filesRepo.js";
 import { putObject, s3Key, getSigned, deleteObject } from "../../services/aws/s3.js";
-import { getParam } from "../../services/aws/params.js"
+import { getParam } from "../../services/aws/params.js";
 
 const router = express.Router();
-
-// const uploadDir = "uploads";
-// if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-
-// const DATA_DIR = "data";
-// if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-
-// const DATA_PATH = path.join(DATA_DIR, "db.json");
-// if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, JSON.stringify({ files: [] }, null, 2));
 
 router.post("/upload", authMiddleware, async (req, res) => {
     if (!req.files || !req.files.video) {
@@ -35,7 +22,7 @@ router.post("/upload", authMiddleware, async (req, res) => {
         });
 
         const rec = {
-            "qut-username": req.user?.sub || getParam("QUT_USERNAME"),
+            "qut-username": req.user?.sub || await getParam("QUT_USERNAME"),
             createdAt: new Date().toISOString(),
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             origName: video.name,
@@ -63,7 +50,7 @@ router.get("/mine", authMiddleware, async (req, res) => {
         try { cursor = JSON.parse(Buffer.from(req.query.cursor, "base64").toString("utf8")); } catch { }
     }
 
-    const user = req.user?.sub || getParam("QUT_USERNAME");
+    const user = req.user?.sub || await getParam("QUT_USERNAME");
     const { items, nextCursor } = await listMine(user, { limit, cursor });
 
     if (nextCursor) {
@@ -74,30 +61,11 @@ router.get("/mine", authMiddleware, async (req, res) => {
 });
 
 // Download
-// router.get("/:id/download", authMiddleware, (req, res) => {
-//     const db = loadDB();
-//     const file = db.files.find(f => f.id === req.params.id);
-//     if (!file) return res.status(404).send("Not found");
-
-//     const isOwner = file.ownerSub === req.user.sub;
-//     const isAdmin = req.user.role === "admin";
-//     if (!isOwner && !isAdmin) return res.status(403).send("Forbidden");
-
-//     const p = file.outputPath || file.inputPath;
-//     if (!p || !fs.existsSync(p)) return res.status(404).send("File missing");
-
-//     const suggested = file.outputPath ?
-//         file.origName.replace(/\.[^.]+$/, ".gif") :
-//         file.origName;
-//     res.setHeader("Content-Disposition", `attachment; filename="${suggested}"`);
-//     return res.download(p, path.basename(p));
-// });
-
 router.get("/:id/download", authMiddleware, async (req, res) => {
     const rec = await getById(req.params.id);
     if (!rec) return res.status(404).send("Not found");
 
-    const isOwner = rec["qut-username"] === (req.user?.sub || getParam("QUT_USERNAME"));
+    const isOwner = rec["qut-username"] === (req.user?.sub || (await getParam("QUT_USERNAME")));
     const isAdmin = req.user?.role === "admin";
     if (!isOwner && !isAdmin) return res.status(403).send("Forbidden");
     const key = rec.outputPath || rec.inputPath;
@@ -128,38 +96,11 @@ router.patch("/:id/tags", authMiddleware, async (req, res) => {
 });
 
 // Delete uploaded video
-// router.delete("/:id/upload", authMiddleware, (req, res) => {
-//     const db = loadDB();
-//     const idx = db.files.findIndex(f => f.id === req.params.id);
-//     if (idx === -1) return res.status(404).json({ error: "Not found" });
-
-
-//     const file = db.files[idx];
-//     const isOwner = file.ownerSub === req.user.sub;
-//     const isAdmin = req.user.role === "admin";
-//     if (!isOwner && !isAdmin) return res.status(403).json({ error: "Forbidden" });
-
-//     const p = file.inputPath;
-//     if (p && fs.existsSync(p)) {
-//         try {
-//             fs.unlinkSync(p); // delete physical file
-//         } catch (e) {
-//             console.warn("Failed to delete file:", e.message);
-//         }
-//     }
-
-//     // delete record from DB
-//     db.files.splice(idx, 1);
-//     saveDB(db);
-
-//     return res.json({ message: "Upload and DB record deleted", id: req.params.id });
-// });
-
 router.delete("/:id/upload", authMiddleware, async (req, res) => {
     const rec = await getById(req.params.id);
     if (!rec) return res.status(404).json({ error: "Not found" });
 
-    const isOwner = rec["qut-username"] === (req.user?.sub || getParam("QUT_USERNAME"));
+    const isOwner = rec["qut-username"] === (req.user?.sub || (await getParam("QUT_USERNAME")));
     const isAdmin = req.user?.role === "admin";
     if (!isOwner && !isAdmin) return res.status(403).json({ error: "Forbidden" });
 
@@ -191,20 +132,5 @@ router.delete("/:id/upload", authMiddleware, async (req, res) => {
 //     saveDB(db);
 //     return res.json({ message: "Output deleted", id: file.id });
 // });
-
-
-
-// Load and save DB
-// function loadDB() {
-//     return JSON.parse(fs.readFileSync(DATA_PATH, "utf-8"));
-// }
-
-// function saveDB(data) {
-//     fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2));
-// }
-
-// function genId() {
-//     return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-// }
 
 export default router;

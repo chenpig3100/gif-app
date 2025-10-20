@@ -1,16 +1,9 @@
 import express from "express";
 import axios from "axios";
-import fs from "fs";
-import path from "path";
 import { cognitoAuth as authMiddleware } from "../../middleware/cognitoAuth.js";
 import { createFileRec } from "../../services/filesRepo.js";
-import { uploadStream, s3Key, putObject } from "../../services/aws/s3.js";
+import { s3Key, putObject } from "../../services/aws/s3.js";
 import { getParam } from "../../services/aws/params.js";
-import { pipeline } from "stream/promises";
-
-// 不是抓S3的檔案，是抓local的檔案
-const UPLOAD_DIR = path.resolve(process.cwd(), "uploads");
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const router = express.Router();
 
@@ -59,33 +52,43 @@ router.post("/ingest", authMiddleware, async (req, res) => {
     if (!url) return res.status(400).json({ error: "url is required" });
 
     const filename = `${Date.now()}.mp4`;
-    const absPath = path.join(UPLOAD_DIR, filename);
     const key = s3Key("uploads", filename);
 
     const response = await axios.get(url, {
-        responseType: "stream",
-        timeout: 30000,
-        headers: {
-            "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-            Referer: "https://www.pexels.com/",
-            Accept: "video/*,application/octet-stream;q=0.9,*/*;q=0.8",
-        },
-        validateStatus: (s) => s >= 200 && s < 400,
+      responseType: "stream",
+      timeout: 30000,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        Referer: "https://www.pexels.com/",
+        Accept: "video/*,application/octet-stream;q=0.9,*/*;q=0.8",
+      },
+      validateStatus: (s) => s >= 200 && s < 400,
     });
 
-    await pipeline(response.data, fs.createWriteStream(absPath));
+    const contentType = response.headers["content-type"] || "video/mp4";
+    const contentLengthHeader = response.headers["content-length"]; // may be undefined
+    const contentLength = contentLengthHeader ? Number(contentLengthHeader) : undefined;
 
-    const size = fs.statSync(absPath).size;
     await putObject({
-        Key: key,
-        Body: fs.createReadStream(absPath),
-        ContentType: response.headers["content-type"] || "video/mp4",
-        ContentLength: size,
+      Key: key,
+      Body: response.data, // stream directly to S3
+      ContentType: contentType,
+      ...(contentLength ? { ContentLength: contentLength } : {}),
     });
 
-    try { fs.unlinkSync(absPath); } catch { }
-    return res.json({ ok: true, key, filename, size });
+    // Create metadata record in DynamoDB
+    const rec = await createFileRec({
+      ownerSub: req.user?.sub || "unknown",
+      origName: origName || filename,
+      mime: contentType,
+      size: contentLength ?? null,
+      inputPath: key,
+      outputPath: null,
+      tags: [],
+    });
+
+    return res.json({ ok: true, key, filename, size: contentLength ?? null, file: rec });
 });
 
 export default router;
