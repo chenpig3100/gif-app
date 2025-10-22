@@ -39,7 +39,7 @@ router.post("/transcode", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "File path is required" });
     }
 
-    const inputStream = await getObjectStream(filePath);
+    const { stream: inputStream } = await getObjectStream(filePath);
 
     // Transcode directly in memory
     const gifKey = s3Key("outputs", `${baseNameNoExt(filePath)}.gif`);
@@ -49,8 +49,18 @@ router.post("/transcode", authMiddleware, async (req, res) => {
       width: 320,
     });
 
-    // Upload result directly to S3
-    await putObject({ Key: gifKey, Body: gifStream, ContentType: "image/gif" });
+    // Buffer the GIF stream before uploading to S3 to avoid streaming upload errors
+    const chunks = [];
+    for await (const chunk of gifStream) {
+      chunks.push(chunk);
+    }
+    const gifBuffer = Buffer.concat(chunks);
+
+    await putObject({
+      Key: gifKey,
+      Body: gifBuffer,
+      ContentType: "image/gif",
+    });
 
     if (fileId) {
       await updateOutputPathById(fileId, gifKey);

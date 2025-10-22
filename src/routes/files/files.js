@@ -1,6 +1,6 @@
 import express from "express";
 import { cognitoAuth as authMiddleware } from "../../middleware/cognitoAuth.js";
-import { createFileRec, getById, listMine, updateTags, deleteRecordById } from "../../services/filesRepo.js";
+import { createFileRec, getById, listMine, updateTags, deleteRecordById, updateOutputPathById } from "../../services/filesRepo.js";
 import { putObject, s3Key, getSigned, deleteObject } from "../../services/aws/s3.js";
 import { getParam } from "../../services/aws/params.js";
 
@@ -115,22 +115,28 @@ router.delete("/:id/upload", authMiddleware, async (req, res) => {
     return res.json({ message: "Upload and DB record deleted", id: req.params.id });
 });
 
-// Delete generated GIF
-// router.delete("/:id/output", authMiddleware, (req, res) => {
-//     const db = loadDB();
-//     const file = db.files.find(f => f.id === req.params.id);
-//     if (!file) return res.status(404).json({ error: "Not found" });
+// Delete generated GIF (output)
+router.delete("/:id/output", authMiddleware, async (req, res) => {
+    // Load record
+    const rec = await getById(req.params.id);
+    if (!rec) return res.status(404).json({ error: "Not found" });
 
-//     const isOwner = file.ownerSub === req.user.sub;
-//     const isAdmin = req.user.role === "admin";
-//     if (!isOwner && !isAdmin) return res.status(403).json({ error: "Forbidden" });
+    // AuthZ: owner or admin
+    const isOwner = rec["qut-username"] === (req.user?.sub || (await getParam("QUT_USERNAME")));
+    const isAdmin = req.user?.role === "admin";
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: "Forbidden" });
 
-//     const p = file.outputPath;
-//     if (!p) return res.status(404).json({ error: "No output to delete" });
-//     try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (e) { /* ignore */ }
-//     file.outputPath = null;
-//     saveDB(db);
-//     return res.json({ message: "Output deleted", id: file.id });
-// });
+    // Must have an output to delete
+    const key = rec.outputPath;
+    if (!key) return res.status(404).json({ error: "No output to delete" });
+
+    // Delete from S3 (best-effort)
+    try { await deleteObject({ Key: key }); } catch (e) { console.error("delete outputObject error:", e); }
+
+    // Update DB to clear output path
+    await updateOutputPathById(req.params.id, null);
+
+    return res.json({ message: "Output deleted", id: req.params.id });
+});
 
 export default router;

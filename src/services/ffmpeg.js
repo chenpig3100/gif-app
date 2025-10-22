@@ -2,13 +2,32 @@ import { spawn } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { PassThrough } from "stream";
+import { PassThrough, Readable } from "stream";
+import { pipeline } from "stream/promises";
+
+// Normalize various input types to a Node.js Readable stream
+function toNodeReadable(src) {
+  // Already a Node stream
+  if (src && typeof src.pipe === "function") return src;
+
+  // Buffers / Uint8Array
+  if (Buffer.isBuffer(src) || src instanceof Uint8Array) {
+    return Readable.from(src);
+  }
+
+  // Async iterable (some SDK bodies)
+  if (src && typeof src[Symbol.asyncIterator] === "function") {
+    return Readable.from(src);
+  }
+
+  throw new TypeError("Unsupported input stream type for ffmpeg: expected a Readable stream");
+}
 
 /**
  * Stream-based transcoding: pipe input stream -> ffmpeg -> GIF stream
  * No local files are created. Caller can upload the returned stream to S3.
  *
- * @param {Readable} inputStream - source video stream (e.g. S3 GetObject Body)
+ * @param {Readable|Buffer|Uint8Array|AsyncIterable} inputStream - source video stream (e.g. S3 GetObject Body)
  * @param {object} opts
  * @param {number} [opts.duration=5]
  * @param {number} [opts.fps=10]
@@ -32,14 +51,37 @@ export function transcodeToGifStream(inputStream, { duration = 5, fps = 10, widt
 
   const proc = spawn("ffmpeg", args);
 
-  // forward input to ffmpeg stdin
-  inputStream.pipe(proc.stdin);
-  // avoid EPIPE if ffmpeg closes early
-  proc.stdin.on("error", () => {});
+  // capture ffmpeg stderr for better error messages
+  let fferr = "";
+  proc.stderr.on("data", (d) => { fferr += d.toString(); });
 
-  // expose ffmpeg stdout as a readable stream
+  // Normalize to Node Readable then forward to ffmpeg stdin using pipeline
+  const inStream = toNodeReadable(inputStream);
+
+  // Expose ffmpeg stdout as a readable stream
   const out = new PassThrough();
   proc.stdout.pipe(out);
+
+  // Forward input safely and ignore EPIPE when ffmpeg closes early
+  pipeline(inStream, proc.stdin).catch((err) => {
+    if (err && (err.code === "EPIPE" || String(err).includes("EPIPE"))) {
+      // ffmpeg closed stdin; safe to ignore
+      return;
+    }
+    try { proc.kill("SIGKILL"); } catch (_) {}
+    out.emit("error", err);
+  });
+  proc.stdin.on("error", (e) => {
+    if (e && e.code === "EPIPE") return; // ignore expected EPIPE
+    out.emit("error", e);
+  });
+
+  // If ffmpeg itself errors, surface that on the output stream
+  proc.on("error", (err) => out.emit("error", err));
+  proc.on("close", (code) => {
+    if (code !== 0) out.emit("error", new Error(`ffmpeg exited with code ${code}${fferr ? ": " + fferr : ""}`));
+    out.end();
+  });
 
   return { stream: out, process: proc };
 }

@@ -10,7 +10,7 @@ const router = express.Router();
 // Pexels Trending Videos
 router.get("/trending", async (req, res) => {
     const { limit = 10, page = 1 } = req.query;
-    const PEXELS_API_KEY = getParam("PEXELS_API_KEY");
+    const PEXELS_API_KEY = await getParam("PEXELS_API_KEY");
 
     try {
         const { data } = await axios.get("https://api.pexels.com/videos/popular", {
@@ -70,23 +70,34 @@ router.post("/ingest", authMiddleware, async (req, res) => {
     const contentLengthHeader = response.headers["content-length"]; // may be undefined
     const contentLength = contentLengthHeader ? Number(contentLengthHeader) : undefined;
 
+    // Buffer the stream into a Buffer before uploading to S3
+    const chunks = [];
+    for await (const chunk of response.data) {
+      chunks.push(chunk);
+    }
+    const fileBuffer = Buffer.concat(chunks);
+
     await putObject({
       Key: key,
-      Body: response.data, // stream directly to S3
+      Body: fileBuffer,
       ContentType: contentType,
       ...(contentLength ? { ContentLength: contentLength } : {}),
     });
 
-    // Create metadata record in DynamoDB
-    const rec = await createFileRec({
-      ownerSub: req.user?.sub || "unknown",
+    // Create metadata record in DynamoDB (must include partition/sort keys)
+    const owner = req.user?.sub || (await getParam("QUT_USERNAME"));
+    const rec = {
+      "qut-username": owner,
+      createdAt: new Date().toISOString(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       origName: origName || filename,
       mime: contentType,
-      size: contentLength ?? null,
+      size: (contentLength ?? fileBuffer.length) || null,
       inputPath: key,
       outputPath: null,
       tags: [],
-    });
+    };
+    await createFileRec(rec);
 
     return res.json({ ok: true, key, filename, size: contentLength ?? null, file: rec });
 });
