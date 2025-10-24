@@ -1,4 +1,5 @@
 import express from "express";
+import axios from "axios";
 import { cognitoAuth as authMiddleware } from "../../middleware/cognitoAuth.js";
 import { getById, updateOutputPathById } from "../../services/filesRepo.js";
 import { s3Key, getObjectStream, putObject } from "../../services/aws/s3.js";
@@ -70,6 +71,18 @@ router.post("/transcode", authMiddleware, async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message || "Transcode failed" });
+  }
+});
+
+router.post("/transcodeW", authMiddleware, async (req, res) => {
+  const { s3Key } = req.body;
+  try {
+    const workerUrl = process.env.WORKER_URL || "http://localhost:4000/transcode";
+    const resp = await axios.post(workerUrl, { s3Key });
+    res.json(resp.data);
+  } catch (e) {
+    console.error("API → Worker error:", e.message);
+    res.status(500).json({ error: "Failed to reach worker-service" });
   }
 });
 
