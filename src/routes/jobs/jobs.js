@@ -1,89 +1,84 @@
 import express from "express";
-import axios from "axios";
 import { cognitoAuth as authMiddleware } from "../../middleware/cognitoAuth.js";
-import { getById, updateOutputPathById } from "../../services/filesRepo.js";
-import { s3Key, getObjectStream, putObject } from "../../services/aws/s3.js";
-import { transcodeToGifStream } from "../../services/ffmpeg.js";
+import { getById } from "../../services/filesRepo.js";
+import { sendJobToQueue } from "../../services/aws/sqs.js";
 
 const router = express.Router();
 
-function baseNameNoExt(key) {
-  const name = (key || "").split("/").pop() || `file-${Date.now()}`;
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(0, dot) : name;
+/**
+ * Resolve an S3 key (inputPath) from body params and enforce auth when fileId is used.
+ * Supports any one of: { fileId } OR { filePath } OR { s3Key } in the request body.
+ * - fileId: loads record, checks ownership/admin, uses rec.inputPath as s3Key
+ * - filePath/s3Key: treated as the S3 object key directly
+ */
+async function resolveS3KeyAndAuthorize(req, res) {
+  const { fileId, filePath, s3Key } = req.body || {};
+
+  // If client directly provides s3Key, accept it (no DB fetch)
+  if (s3Key) return { s3Key, fileId: null };
+
+  let rec = null;
+  let key = filePath || null; // In this project, filePath already represents an S3 key
+
+  if (fileId) {
+    rec = await getById(fileId);
+    if (!rec) {
+      res.status(404).json({ error: "File not found" });
+      return null;
+    }
+
+    const isOwner = rec["qut-username"] === req.user.sub;
+    const isAdmin = req.user.role === "admin";
+    if (!isOwner && !isAdmin) {
+      res.status(403).json({ error: "Forbidden" });
+      return null;
+    }
+
+    key = rec.inputPath;
+  }
+
+  if (!key) {
+    res.status(400).json({ error: "fileId, filePath or s3Key is required" });
+    return null;
+  }
+
+  return { s3Key: key, fileId: fileId || null };
 }
 
-router.post("/transcode", authMiddleware, async (req, res) => {
-  const { fileId, filePath: bodyFilePath } = req.body;
-  if (!fileId && !bodyFilePath) {
-    return res.status(400).json({ error: "fileId or filePath is required" });
-  }
+/**
+ * POST /jobs/transcode (and /jobs/transcodeW for backward compatibility)
+ * Queues a transcode job to SQS instead of calling the worker directly.
+ */
+async function enqueueTranscode(req, res) {
+  const resolved = await resolveS3KeyAndAuthorize(req, res);
+  if (!resolved) return;
+
+  const { s3Key, fileId } = resolved;
+
+  const job = {
+    type: "transcode",
+    s3Key,
+    options: { duration: 5, fps: 10, width: 320 },
+    fileId,
+    requestedBy: req.user?.sub,
+    requestedAt: Date.now(),
+  };
 
   try {
-    let rec = null;
-    let filePath = bodyFilePath || null;
-
-    if (fileId) {
-      rec = await getById(fileId);
-      if (!rec) return res.status(404).json({ error: "File not found" });
-
-      const isOwner = rec["qut-username"] === req.user.sub;
-      const isAdmin = req.user.role === "admin";
-      if (!isOwner && !isAdmin) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-
-      filePath = rec.inputPath;
-    }
-
-    if (!filePath) {
-      return res.status(400).json({ error: "File path is required" });
-    }
-
-    const { stream: inputStream } = await getObjectStream(filePath);
-
-    // Transcode directly in memory
-    const gifKey = s3Key("outputs", `${baseNameNoExt(filePath)}.gif`);
-    const { stream: gifStream } = transcodeToGifStream(inputStream, {
-      duration: 5,
-      fps: 10,
-      width: 320,
+    const resp = await sendJobToQueue(job); // may be undefined if helper doesn't return
+    return res.status(202).json({
+      status: "queued",
+      s3Key,
+      fileId,
+      messageId: resp?.MessageId,
     });
-
-    // Buffer the GIF stream before uploading to S3 to avoid streaming upload errors
-    const chunks = [];
-    for await (const chunk of gifStream) {
-      chunks.push(chunk);
-    }
-    const gifBuffer = Buffer.concat(chunks);
-
-    await putObject({
-      Key: gifKey,
-      Body: gifBuffer,
-      ContentType: "image/gif",
-    });
-
-    if (fileId) {
-      await updateOutputPathById(fileId, gifKey);
-    }
-
-    return res.json({ status: "done", outputPath: gifKey, fileId: fileId || null });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: err.message || "Transcode failed" });
-  }
-});
-
-router.post("/transcodeW", authMiddleware, async (req, res) => {
-  const { s3Key } = req.body;
-  try {
-    const workerUrl = process.env.WORKER_URL || "http://localhost:4000/transcode";
-    const resp = await axios.post(workerUrl, { s3Key });
-    res.json(resp.data);
   } catch (e) {
-    console.error("API → Worker error:", e.message);
-    res.status(500).json({ error: "Failed to reach worker-service" });
+    console.error("Queue enqueue error:", e);
+    return res.status(500).json({ error: "Failed to enqueue job" });
   }
-});
+}
+
+router.post("/transcode", authMiddleware, enqueueTranscode);
+router.post("/transcodeW", authMiddleware, enqueueTranscode); // alias for compatibility
 
 export default router;
